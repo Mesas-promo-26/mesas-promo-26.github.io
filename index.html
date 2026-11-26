@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="Buscá el apellido del egresado y encontrá las mesas de su familia de la Promo 2026.">
+<meta name="description" content="Buscá el nombre o el apellido del egresado y encontrá las mesas de su familia de la Promo 2026.">
 <meta name="theme-color" content="#050203">
 <meta property="og:title" content="Encontrá tu mesa · Promo 2026">
-<meta property="og:description" content="Promo 2026 · Indu 26. Buscá el apellido del egresado y mirá tus mesas.">
+<meta property="og:description" content="Promo 2026 · Indu 26. Buscá el nombre o el apellido del egresado y mirá tus mesas.">
 <meta property="og:image" content="fondo.jpg">
 <meta name="robots" content="noindex">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>♥</text></svg>">
@@ -258,12 +258,12 @@ h1 { background: linear-gradient(105deg, transparent 38%, rgba(255,255,255,.95) 
     <img class="logo" src="logo-indu26.webp" alt="Indu 26" width="1400" height="316">
     <div class="eyebrow">Promo 2026 · Indu 26</div>
     <h1>Encontrá tu mesa</h1>
-    <p class="lead">Escribí el <b>apellido completo del egresado</b> que te invitó y te mostramos los números de mesa de su familia.</p>
+    <p class="lead">Escribí el <b>nombre o el apellido del egresado</b> que te invitó y te mostramos los números de mesa de su familia.</p>
     <form class="search" id="form" role="search">
       <label class="sr" for="q">Apellido o nombre del egresado</label>
       <div class="field">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.6-3.6"/></svg>
-        <input id="q" type="search" inputmode="search" autocomplete="off" autocapitalize="words" spellcheck="false" placeholder="Apellido del egresado">
+        <input id="q" type="search" inputmode="search" autocomplete="off" autocapitalize="words" spellcheck="false" placeholder="Nombre o apellido">
         <button class="clear" type="button" id="clear" aria-label="Borrar búsqueda" hidden>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
         </button>
@@ -286,8 +286,7 @@ const CURSOS = {
   "7mo 3ra": { k: 3, area: "Mecánica" },
   "7mo 4ta": { k: 4, area: "Programación" },
 };
-// El resultado del sorteo está en sorteo.json, cifrado por apellido: solo se puede leer
-// la mesa de una familia escribiendo su apellido (o su nombre y apellido) completo.
+// Las entradas se cifran por término de búsqueda normalizado.
 const norm = s => String(s).normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
 const esc = s => String(s).replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
 const te = new TextEncoder();
@@ -316,12 +315,12 @@ function tarjeta(x, animar) {
   const txt = cant === 1 ? `Mesa ${n}` : cant === 2 ? `Mesas ${n} y ${h}` : `Mesas ${n} a ${h}`;
   return `<div class="card k${c.k}${animar ? " entra" : ""}" data-n="${n}" data-h="${h}" data-cant="${cant}">
     <span class="who"><strong>${esc(x.nombre)}</strong><small><i class="dot"></i>${esc(x.curso)}${c.area ? " · " + c.area : ""}</small></span>
-    <span class="tablero"><span class="lbl">${cant === 1 ? "Mesa" : "Mesas"}</span><span class="num">${num}</span><span class="cant">${cant === 1 ? "1 mesa" : cant + " mesas, una al lado de la otra"}</span></span>
+    <span class="tablero"><span class="lbl">${cant === 1 ? "Mesa" : "Mesas"}</span><span class="num">${num}</span><span class="cant">${cant === 1 ? "1 mesa" : cant + (h - n + 1 === cant ? " mesas, una al lado de la otra" : " mesas")}</span></span>
     <span class="sr">${txt}</span>
   </div>`;
 }
 
-const ayuda = '<p class="tip">Escribí el apellido completo y tocá <b>Buscar</b>.</p>';
+const ayuda = '<p class="tip">Escribí un nombre o un apellido y tocá <b>Buscar</b>.</p>';
 const cargandoHTML = '<div class="buscando" role="status"><span class="ficha-gira" aria-hidden="true"></span>Buscando la mesa…</div>';
 let busqueda = 0, temporizador;
 let consultaActiva = false;
@@ -355,17 +354,22 @@ async function buscar(animar = false) {
     const clave = await claveDe(term);
     for (const e of filas) {
       try { const txt = new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: b64d(e.iv) }, clave, b64d(e.d)));
-        const x = JSON.parse(txt); if (palabras.every(w => norm(x.nombre).split(" ").includes(w))) hallados.set(x.nombre + "|" + x.n, x); } catch (err) {}
+        const x = JSON.parse(txt);
+        const coincide = [x.nombre, ...(x.alias || [])].some(forma => {
+          const partes = norm(forma).split(" ");
+          return palabras.every(w => partes.includes(w));
+        });
+        if (coincide) hallados.set(x.nombre + "|" + x.n, x); } catch (err) {}
     }
   }
   if (turno !== busqueda) return;
   const lista = [...hallados.values()].sort((a, b) => a.n - b.n);
   results.classList.toggle("solo", lista.length === 1);
   if (!lista.length) {
-    results.innerHTML = `<div class="vacio"><strong>No encontramos «${esc(q.value.trim())}»</strong><p>Escribí el apellido completo, tal como está en la lista de la promo. Si es un apellido compuesto, probá con una sola de sus partes.</p></div>`;
+    results.innerHTML = `<div class="vacio"><strong>No encontramos «${esc(q.value.trim())}»</strong><p>Probá con el nombre o el apellido del egresado. También podés escribir ambos.</p></div>`;
     return;
   }
-  results.innerHTML = `<div class="rhead"><span><strong>${lista.length}</strong> ${lista.length === 1 ? "familia" : "familias con ese apellido"}</span></div>` + lista.map(x => tarjeta(x, animar)).join("");
+  results.innerHTML = `<div class="rhead"><span><strong>${lista.length}</strong> ${lista.length === 1 ? "familia" : "familias encontradas"}</span></div>` + lista.map(x => tarjeta(x, animar)).join("");
 }
 
 q.addEventListener("input", () => {
@@ -374,7 +378,7 @@ q.addEventListener("input", () => {
   consultaActiva = false;
   $("clear").hidden = !q.value;
   mostrarAyuda();
-  if (norm(q.value).length >= 3) temporizador = setTimeout(buscar, 220);
+  if (norm(q.value).length >= 2) temporizador = setTimeout(buscar, 220);
 });
 $("form").addEventListener("submit", e => {
   e.preventDefault();
